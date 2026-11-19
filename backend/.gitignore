@@ -1,0 +1,10 @@
+node_modules/
+.env
+.env.*
+!.env.example
+coverage/
+npm-debug.log*
+
+# User uploads (resumes, logos, verification documents) must never be committed
+uploads/*
+!uploads/.gitkeep

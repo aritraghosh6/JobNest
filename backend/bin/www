@@ -1,0 +1,64 @@
+#!/usr/bin/env node
+
+/**
+ * Server entry point (kept in the Express Generator style).
+ * It connects to MongoDB first and only then starts listening,
+ * so the API never runs without a database.
+ */
+
+const http = require('http');
+const debug = require('debug')('jobnest:server');
+const app = require('../app'); // app.js loads .env before anything else
+const { connectDB } = require('../config/db');
+const { initDatabase } = require('../scripts/dbInit');
+const { checkMailSetup } = require('../services/mailService');
+const { startReminders } = require('../services/reminderService');
+
+const port = normalizePort(process.env.PORT || '5000');
+app.set('port', port);
+
+const server = http.createServer(app);
+
+connectDB()
+  // Creates any missing (empty) collections and indexes. Never inserts or deletes documents.
+  .then(() => initDatabase({ quiet: true }))
+  .then((collections) => {
+    console.log(`JobNestDB ready: ${collections.length} collections checked`);
+    server.listen(port);
+    server.on('error', onError);
+    server.on('listening', onListening);
+    startReminders(); // deadline reminders, every hour
+    checkMailSetup(); // prints whether emails go to inboxes or to this terminal
+  })
+  .catch((err) => {
+    console.error('Server not started. Database connection or initialisation failed:', err.message);
+    process.exit(1);
+  });
+
+function normalizePort(val) {
+  const parsed = parseInt(val, 10);
+  if (Number.isNaN(parsed)) return val;
+  if (parsed >= 0) return parsed;
+  return false;
+}
+
+function onError(error) {
+  if (error.syscall !== 'listen') throw error;
+  const bind = typeof port === 'string' ? `Pipe ${port}` : `Port ${port}`;
+  if (error.code === 'EACCES') {
+    console.error(`${bind} requires elevated privileges`);
+    process.exit(1);
+  }
+  if (error.code === 'EADDRINUSE') {
+    console.error(`${bind} is already in use. Stop the other process or change PORT in .env`);
+    process.exit(1);
+  }
+  throw error;
+}
+
+function onListening() {
+  const addr = server.address();
+  const bind = typeof addr === 'string' ? `pipe ${addr}` : `port ${addr.port}`;
+  debug(`Listening on ${bind}`);
+  console.log(`JobNest API running at http://localhost:${addr.port}/api/v1`);
+}
